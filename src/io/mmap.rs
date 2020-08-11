@@ -96,6 +96,12 @@ impl Reader for MMappedReader {
         }
     }
 
+    fn read_u128(&mut self) -> Result<u128> {
+        let buf = array_ref![self.mmap, self.offset, 16];
+        self.offset += 16;
+        Ok(u128::from_le_bytes(*buf))
+    }
+
     fn read_u16(&mut self) -> Result<u16> {
         let buf = array_ref![self.mmap, self.offset, 2];
         self.offset += 2;
@@ -117,6 +123,6 @@ impl Reader for MMappedReader {
     fn read_u8(&mut self) -> Result<u8> {
         let val = self.mmap[self.offset];
         self.offset += 1;
-        Ok(val as u8)
+        Ok(val)
     }
 }

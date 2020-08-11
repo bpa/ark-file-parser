@@ -1,5 +1,6 @@
 mod ark;
 mod io;
+mod properties;
 mod savefile;
 
 #[macro_use]

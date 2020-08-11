@@ -1,5 +1,6 @@
 use crate::ark::Ark;
 use crate::io::{MMappedReader, Reader};
+use crate::properties::read_properties;
 use std::io::{Result, Seek, SeekFrom};
 
 pub struct ArkSave {
@@ -49,22 +50,6 @@ impl ArkSave {
         let z = self.file.read_f32()?;
         self.file.seek(SeekFrom::Current(12))?;
         Ok((x, y, z))
-    }
-
-    fn read_properties(&mut self, properties_offset: u64) -> Result<()> {
-        let p = self.file.read_i32()? as u64;
-        println!(
-            "Properties at {} + {} = {}",
-            p,
-            properties_offset,
-            p + properties_offset
-        );
-        let here = self.file.seek(SeekFrom::Current(0))?;
-        self.file.seek(SeekFrom::Start(p + properties_offset))?;
-        let class_id = self.file.read_i32()? as usize;
-        println!("First property is {}: {}", class_id, self.names[class_id]);
-        self.file.seek(SeekFrom::Start(here))?;
-        Ok(())
     }
 
     fn skip_binary_data_names(&mut self) -> Result<()> {
@@ -119,7 +104,7 @@ impl ArkSave {
         println!("Found {} objects", objects);
         for _ in 0..objects {
             let here = self.file.seek(SeekFrom::Current(0))?;
-            self.file.seek(SeekFrom::Current(16))?; //Skip GUID
+            let guid = self.file.read_u128()?;
             let class = self.read_class()?;
             let _is_item = self.file.read_bool()?;
             let extra_classes = self.file.read_i32()?;
@@ -128,23 +113,29 @@ impl ArkSave {
                 classes.push(self.read_class()?);
             }
             self.file.seek(SeekFrom::Current(8))?;
+            let skip = self.names[class] == "InstancedFoliageActor";
             if self.file.read_bool()? {
                 //has location
                 let (x, y, z) = self.read_location()?;
-                if self.names[class].contains("Unicorn") {
+                if !skip {
                     println!(
-                        "Found Unicorn at {}, {}, {} ({:.1}, {:.1})",
+                        "^^^\nFound {} ({:x}) at {}, {}, {} ({:.1}, {:.1})",
+                        self.names[class],
+                        guid,
                         x,
                         y,
                         z,
                         (x / self.map.x_divisor) + self.map.x_offset,
                         (y / self.map.y_divisor) + self.map.y_offset
                     );
-                    println!("Base record at {}", here);
                 }
+            } else {
+                println!("vvv\nFound {} ({:x})", self.names[class], guid);
             }
-            if self.names[class].contains("Unicorn") {
-                self.read_properties(properties_offset)?;
+            if !skip {
+                if class != 0 {
+                    read_properties(&mut self.file, &mut self.names, properties_offset)?;
+                }
             } else {
                 self.file.read_i32()?;
             }
