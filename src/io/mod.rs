@@ -3,6 +3,7 @@ mod mmap;
 pub use mmap::MMappedReader;
 use std::io::{Read, Result, Seek};
 
+#[derive(Debug)]
 pub struct Name {
     pub id: usize,
     pub instance: u32,
@@ -22,6 +23,7 @@ pub trait Reader: Seek + Read {
     fn read_u32(&mut self) -> Result<u32>;
     fn read_u64(&mut self) -> Result<u64>;
     fn read_u8(&mut self) -> Result<u8>;
+
     fn read_name(&mut self) -> Result<Name> {
         Ok(Name {
             id: self.read_u32()? as usize,
