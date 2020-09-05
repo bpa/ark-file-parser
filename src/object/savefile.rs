@@ -1,16 +1,18 @@
+use super::location::Location;
+use super::names::Names;
 use crate::ark::Ark;
 use crate::io::{MMappedReader, Reader};
-use crate::location::Location;
-use crate::names::Names;
 use crate::object::Object;
 use crate::properties::Properties;
 use std::io::{Result, Seek, SeekFrom};
+use std::rc::Rc;
 
 pub struct ArkSave {
     file: MMappedReader,
-    class_offset: u64,
+    _class_offset: u64,
     objects_offset: u64,
     properties_offset: u64,
+    names: Rc<Names>,
     _map: Ark,
 }
 
@@ -23,21 +25,24 @@ impl ArkSave {
         skip_embedded_binary_data(&mut file)?;
         skip_unknown_data(&mut file)?;
         let objects_offset = file.seek(SeekFrom::Current(0))?;
+        let names = Rc::new(Names::new(&mut file, class_offset)?);
 
         Ok(ArkSave {
             file,
-            class_offset,
+            _class_offset: class_offset,
             objects_offset,
             properties_offset,
             _map: Ark::new(50.0, 8000.0, 50.0, 8000.0),
+            names,
         })
     }
 
-    pub fn read_names(&mut self) -> Result<Names> {
-        Names::new(&mut self.file, self.class_offset)
+    pub fn get_name_id(&self, name: &str) -> Option<&usize> {
+        self.names.get_name_id(name)
     }
 
-    pub fn read_objects<'a>(&mut self, names: &Names) -> Result<Vec<Object<'a>>> {
+    pub fn read_objects<'a>(&mut self) -> Result<Vec<Object>> {
+        self.file.seek(SeekFrom::Start(self.objects_offset))?;
         let object_count = self.file.read_i32()?;
         let mut objects = Vec::with_capacity(object_count as usize);
         for _ in 0..object_count {
@@ -59,15 +64,12 @@ impl ArkSave {
             };
 
             let object_properties_offset = self.file.read_i32()? as u64;
-            let skip = &names[name.id] == "InstancedFoliageActor";
             let mut properties = Properties::new();
-            if !skip {
-                properties.read(
-                    &mut self.file,
-                    names,
-                    self.properties_offset + object_properties_offset,
-                )?
-            };
+            properties.read(
+                &mut self.file,
+                &self.names,
+                self.properties_offset + object_properties_offset,
+            )?;
 
             self.file.seek(SeekFrom::Current(4))?;
 
@@ -78,7 +80,7 @@ impl ArkSave {
                 extra_classes,
                 location,
                 properties,
-                names,
+                self.names.clone(),
             ));
         }
         Ok(objects)

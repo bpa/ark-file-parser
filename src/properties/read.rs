@@ -1,14 +1,15 @@
 use crate::io::{Name, Reader};
-use crate::names::Names;
+use crate::object::Names;
 use crate::properties::{Properties, Property, Value};
 use std::collections::hash_map::Entry;
 use std::io::{Result, SeekFrom};
+use std::rc::Rc;
 
-impl<'a> Properties<'a> {
+impl<'a> Properties {
     pub fn read(
         &mut self,
         file: &mut dyn Reader,
-        names: &Names,
+        names: &Rc<Names>,
         properties_offset: u64,
     ) -> Result<()> {
         let here = file.seek(SeekFrom::Current(0))?;
@@ -51,6 +52,7 @@ impl<'a> Properties<'a> {
                 Entry::Occupied(mut e) => e.get_mut().push(property),
                 Entry::Vacant(e) => {
                     e.insert(vec![property]);
+                    self.set.insert(names[id].into());
                 }
             }
         }

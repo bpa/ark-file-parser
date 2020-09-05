@@ -1,5 +1,6 @@
 use crate::io::Name;
-use std::collections::hash_map::{HashMap, Values};
+use std::collections::hash_map::HashMap;
+use std::collections::hash_set::HashSet;
 mod read;
 mod value;
 pub use value::Value;
@@ -12,17 +13,21 @@ pub struct Property {
 }
 
 #[derive(Debug)]
-pub struct Properties<'a> {
+pub struct Properties {
     pub props: HashMap<usize, Vec<Property>>,
-    iter: Option<Values<'a, usize, Vec<Property>>>,
+    set: HashSet<String>,
 }
 
-impl<'a> Properties<'a> {
+impl<'a> Properties {
     pub fn new() -> Self {
         Properties {
             props: HashMap::new(),
-            iter: None,
+            set: HashSet::new(),
         }
+    }
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.set.contains(name)
     }
 }
 
