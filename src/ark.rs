@@ -1,3 +1,5 @@
+use crate::Location;
+
 pub struct Ark {
     pub x_offset: f32,
     pub x_divisor: f32,
@@ -13,6 +15,14 @@ impl Ark {
             y_offset,
             y_divisor,
         }
+    }
+
+    pub fn longitude(&self, location: &Location) -> f32 {
+        self.x_offset + location.x / self.x_divisor
+    }
+
+    pub fn latitude(&self, location: &Location) -> f32 {
+        self.y_offset + location.y / self.y_divisor
     }
 }
 

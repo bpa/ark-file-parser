@@ -1,90 +1,107 @@
 use super::location::Location;
 use super::names::Names;
+use super::Entry;
 use crate::ark::Ark;
 use crate::io::{MMappedReader, Reader};
 use crate::object::Object;
 use crate::properties::Properties;
-use std::io::{Result, Seek, SeekFrom};
+use std::io::{Result, SeekFrom};
 use std::rc::Rc;
 
 pub struct ArkSave {
-    file: MMappedReader,
     _class_offset: u64,
-    objects_offset: u64,
-    properties_offset: u64,
-    names: Rc<Names>,
-    _map: Ark,
+    pub names: Rc<Names>,
+    entries: Vec<Entry>,
+    pub map: Ark,
 }
 
 impl ArkSave {
-    pub fn open(filename: &str) -> Result<Self> {
+    pub fn read(filename: &str) -> Result<Self> {
         let mut file = MMappedReader::open(filename)?;
 
         let (class_offset, properties_offset) = read_header(&mut file)?;
         skip_binary_data_names(&mut file)?;
         skip_embedded_binary_data(&mut file)?;
         skip_unknown_data(&mut file)?;
-        let objects_offset = file.seek(SeekFrom::Current(0))?;
         let names = Rc::new(Names::new(&mut file, class_offset)?);
+        let objects = Rc::new(read_objects(&mut file, &names, properties_offset)?);
+        let entries = objects
+            .iter()
+            .enumerate()
+            .map(|(i, o)| Entry {
+                object_type: o.object_type,
+                objects: objects.clone(),
+                object: i,
+                inventory: o.inventory_component,
+                status: o.status_component,
+            })
+            .collect();
 
         Ok(ArkSave {
-            file,
             _class_offset: class_offset,
-            objects_offset,
-            properties_offset,
-            _map: Ark::new(50.0, 8000.0, 50.0, 8000.0),
+            map: Ark::new(50.0, 8000.0, 50.0, 8000.0),
             names,
+            entries,
         })
+    }
+
+    pub fn get_name(&self, id: usize) -> &str {
+        &self.names[id]
     }
 
     pub fn get_name_id(&self, name: &str) -> Option<&usize> {
         self.names.get_name_id(name)
     }
 
-    pub fn read_objects<'a>(&mut self) -> Result<Vec<Object>> {
-        self.file.seek(SeekFrom::Start(self.objects_offset))?;
-        let object_count = self.file.read_i32()?;
-        let mut objects = Vec::with_capacity(object_count as usize);
-        for _ in 0..object_count {
-            let guid = self.file.read_u128()?;
-            let name = self.file.read_name()?;
-            let is_item = self.file.read_bool()?;
-
-            let extra_class_count = self.file.read_i32()?;
-            let mut extra_classes = Vec::with_capacity(extra_class_count as usize);
-            for _ in 0..extra_class_count {
-                extra_classes.push(self.file.read_name()?);
-            }
-            self.file.seek(SeekFrom::Current(8))?;
-
-            let location = if self.file.read_bool()? {
-                Some(Location::read(&mut self.file)?)
-            } else {
-                None
-            };
-
-            let object_properties_offset = self.file.read_i32()? as u64;
-            let mut properties = Properties::new();
-            properties.read(
-                &mut self.file,
-                &self.names,
-                self.properties_offset + object_properties_offset,
-            )?;
-
-            self.file.seek(SeekFrom::Current(4))?;
-
-            objects.push(Object::new(
-                guid,
-                name,
-                is_item,
-                extra_classes,
-                location,
-                properties,
-                self.names.clone(),
-            ));
-        }
-        Ok(objects)
+    pub fn entries(&self) -> &Vec<Entry> {
+        &self.entries
     }
+}
+
+pub fn read_objects<'a>(
+    file: &mut dyn Reader,
+    names: &Rc<Names>,
+    properties_offset: u64,
+) -> Result<Vec<Object>> {
+    let object_count = file.read_i32()?;
+    let mut objects = Vec::with_capacity(object_count as usize);
+    for _ in 0..object_count {
+        let guid = file.read_u128()?;
+        let name = file.read_name()?;
+        let is_item = file.read_bool()?;
+
+        let extra_class_count = file.read_i32()?;
+        for _ in 0..extra_class_count {
+            file.read_name()?;
+        }
+        file.seek(SeekFrom::Current(8))?;
+
+        let location = if file.read_bool()? {
+            Some(Location::read(file)?)
+        } else {
+            None
+        };
+
+        let object_properties_offset = file.read_i32()? as u64;
+        let mut properties = Properties::new();
+        let next_object = file.seek(SeekFrom::Current(4))?;
+
+        file.seek(SeekFrom::Start(
+            properties_offset + object_properties_offset,
+        ))?;
+        properties.read(file, names)?;
+        file.seek(SeekFrom::Start(next_object))?;
+
+        objects.push(Object::new(
+            guid,
+            name,
+            is_item,
+            location,
+            properties,
+            names.clone(),
+        ));
+    }
+    Ok(objects)
 }
 
 fn read_header(file: &mut dyn Reader) -> Result<(u64, u64)> {

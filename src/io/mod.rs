@@ -1,9 +1,12 @@
+mod memory;
 mod mmap;
 
+pub use memory::ArrayReader;
 pub use mmap::MMappedReader;
+use serde::Serialize;
 use std::io::{Read, Result, Seek};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Name {
     pub id: usize,
     pub instance: u32,

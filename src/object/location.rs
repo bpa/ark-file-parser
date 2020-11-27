@@ -1,11 +1,12 @@
 use crate::io::Reader;
+use serde::Serialize;
 use std::io::{Result, SeekFrom};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Location {
-    x: f32,
-    y: f32,
-    z: f32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
 }
 
 impl Location {
