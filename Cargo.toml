@@ -4,8 +4,7 @@ description = "Parsing library for Ark: Survival Evolved save files"
 version = "0.1.0"
 authors = ["Bruce Armstrong <bruce@fortressofgeekdom.org>"]
 edition = "2018"
-repository = 
-license = "MIT"
+repository = "https://github.com/bpa/ark-file-parser"
 license-file = "LICENSE"
 keywords = ["ark", "arksurvivalevolved", "game", "extract-data"]
 
