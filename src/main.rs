@@ -1,7 +1,8 @@
-use arksavefile::{ArkSave, Entry, Location, Type};
+use arksavefile::{ArkParser, Entry, MMappedReader, Type};
 use serde::Serialize;
 use serde_json;
 use std::env;
+use std::fs;
 use std::fs::File;
 use std::io::{BufWriter, Result};
 
@@ -11,9 +12,9 @@ struct Wild<'a> {
     tameable: bool,
     is_female: bool,
     class_name: &'a str,
-    location: &'a Location,
-    longitude: f32,
-    latitude: f32,
+    x: f32,
+    y: f32,
+    z: f32,
     base_stats: Vec<i32>,
     base_level: i32,
 }
@@ -24,9 +25,9 @@ struct Tamed<'a> {
     is_female: bool,
     name: &'a str,
     class_name: &'a str,
-    location: &'a Location,
-    longitude: f32,
-    latitude: f32,
+    x: f32,
+    y: f32,
+    z: f32,
     base_stats: Vec<i32>,
     tamed_stats: Vec<i32>,
     base_level: i32,
@@ -43,7 +44,9 @@ struct Baby<'a> {
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() == 2 {
-        let file = ArkSave::read(&args[1])?;
+        let mut file = MMappedReader::open(&args[1])?;
+        let file = ArkParser::read(&mut file)?;
+        fs::create_dir_all(&file.map)?;
         write_wild(&file)?;
         write_tamed(&file)?;
         write_nursery(&file)?;
@@ -64,7 +67,7 @@ fn stats(entry: &Entry, name: &usize) -> Vec<i32> {
     stats
 }
 
-fn write_wild(file: &ArkSave) -> Result<()> {
+fn write_wild(file: &ArkParser) -> Result<()> {
     let is_female = file.get_name_id("bIsFemale").unwrap();
     let taming_disabled = file.get_name_id("bForceDisablingTaming").unwrap();
     let base_levels = file.get_name_id("NumberOfLevelUpPointsApplied").unwrap();
@@ -80,25 +83,26 @@ fn write_wild(file: &ArkSave) -> Result<()> {
                 is_female: o.properties().get_bool(is_female).unwrap_or(false),
                 tameable: !o.properties().get_bool(taming_disabled).unwrap_or(false),
                 class_name: file.get_name(o.name().id),
-                location: loc,
-                longitude: file.map.longitude(loc),
-                latitude: file.map.latitude(loc),
+                x: loc.x,
+                y: loc.y,
+                z: loc.z,
                 base_level: o
                     .status_component()
                     .unwrap()
                     .properties
                     .get_i32(base_level)
+                    .or(Some(1))
                     .unwrap(),
                 base_stats: stats(o, base_levels),
             }
         })
         .collect();
-    let file = BufWriter::new(File::create("wild.json")?);
+    let file = BufWriter::new(File::create(format!("{}/wild.json", file.map))?);
     serde_json::to_writer(file, &entries)?;
     Ok(())
 }
 
-fn write_tamed(file: &ArkSave) -> Result<()> {
+fn write_tamed(file: &ArkParser) -> Result<()> {
     let is_female = file.get_name_id("bIsFemale").unwrap();
     let base_levels = file.get_name_id("NumberOfLevelUpPointsApplied").unwrap();
     let base_level = file.get_name_id("BaseCharacterLevel").unwrap();
@@ -118,9 +122,9 @@ fn write_tamed(file: &ArkSave) -> Result<()> {
                 is_female: o.properties().get_bool(is_female).unwrap_or(false),
                 name: o.properties().get_str(tamed_name).unwrap_or(""),
                 class_name: file.get_name(o.name().id),
-                location: loc,
-                longitude: file.map.longitude(loc),
-                latitude: file.map.latitude(loc),
+                x: loc.x,
+                y: loc.y,
+                z: loc.z,
                 base_level: o
                     .status_component()
                     .unwrap()
@@ -132,15 +136,19 @@ fn write_tamed(file: &ArkSave) -> Result<()> {
             }
         })
         .collect();
-    let file = BufWriter::new(File::create("tames.json")?);
+    let file = BufWriter::new(File::create(format!("{}/tames.json", file.map))?);
     serde_json::to_writer(file, &entries)?;
     Ok(())
 }
 
-fn write_nursery(file: &ArkSave) -> Result<()> {
-    let base_levels = file
-        .get_name_id("GestationEggNumberOfLevelUpPointsApplied")
-        .unwrap();
+fn write_nursery(file: &ArkParser) -> Result<()> {
+    let base_levels_opt = file.get_name_id("GestationEggNumberOfLevelUpPointsApplied");
+    if base_levels_opt.is_none() {
+        fs::write("nursery.json", "[]")?;
+        return Ok(());
+    }
+
+    let base_levels = base_levels_opt.unwrap();
     let mother = file.get_name_id("TamedName").unwrap();
     let parents = file.get_name_id("CustomItemDescription").unwrap();
     let egg_levels = file.get_name_id("EggNumberOfLevelUpPointsApplied").unwrap();
@@ -172,12 +180,12 @@ fn write_nursery(file: &ArkSave) -> Result<()> {
             }
         })
         .collect();
-    let file = BufWriter::new(File::create("nursery.json")?);
+    let file = BufWriter::new(File::create(format!("{}/nursery.json", file.map))?);
     serde_json::to_writer(file, &entries)?;
     Ok(())
 }
 
-fn write_cryopods(file: &ArkSave) -> Result<()> {
+fn write_cryopods(file: &ArkParser) -> Result<()> {
     let cryopod = *file.get_name_id("PrimalItem_WeaponEmptyCryopod_C").unwrap();
 
     let entries: Vec<&Entry> = file
@@ -185,7 +193,7 @@ fn write_cryopods(file: &ArkSave) -> Result<()> {
         .iter()
         .filter(|o| o.name().id == cryopod)
         .collect();
-    let file = BufWriter::new(File::create("cryopods.json")?);
+    let file = BufWriter::new(File::create(format!("{}/cryopods.json", file.map))?);
     serde_json::to_writer_pretty(file, &entries)?;
     Ok(())
 }

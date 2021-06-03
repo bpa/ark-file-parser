@@ -33,4 +33,6 @@ pub trait Reader: Seek + Read {
             instance: self.read_u32()?,
         })
     }
+
+    fn skip_str(&mut self) -> Result<()>;
 }

@@ -33,9 +33,9 @@ pub struct Names {
 }
 
 impl Names {
-    pub fn new(file: &mut dyn Reader, class_offset: u64) -> Result<Self> {
+    pub fn new(file: &mut dyn Reader, names_offset: u64) -> Result<Self> {
         let current_pos = file.seek(SeekFrom::Current(0))?;
-        file.seek(SeekFrom::Start(class_offset))?;
+        file.seek(SeekFrom::Start(names_offset))?;
         let name_count = file.read_i32()?;
         let capacity = name_count as usize + 1;
         let mut names = Vec::with_capacity(capacity);

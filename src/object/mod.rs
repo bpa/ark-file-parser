@@ -1,22 +1,20 @@
 mod location;
 mod names;
 mod object;
-mod savefile;
 mod serialize;
 use super::properties::Properties;
 pub use crate::io::Name;
 pub use location::Location;
 pub use names::Names;
 pub use object::{Object, Type};
-pub use savefile::ArkSave;
 use std::rc::Rc;
 
 pub struct Entry {
     pub object_type: Type,
-    objects: Rc<Vec<Object>>,
-    object: usize,
-    inventory: Option<usize>,
-    status: Option<usize>,
+    pub(crate) objects: Rc<Vec<Object>>,
+    pub(crate) object: usize,
+    pub(crate) inventory: Option<usize>,
+    pub(crate) status: Option<usize>,
 }
 
 impl Entry {

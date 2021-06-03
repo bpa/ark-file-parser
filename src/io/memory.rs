@@ -79,13 +79,38 @@ impl<'a> Reader for ArrayReader<'a> {
     }
 
     fn read_str(&mut self) -> Result<String> {
-        let size = self.read_i32()? as usize;
-        let mut buf = Vec::with_capacity(size - 1);
-        buf.extend_from_slice(&self.data[self.offset..self.offset + size - 1]);
-        self.offset += size;
-        match String::from_utf8(buf) {
-            Ok(string) => Ok(string),
-            Err(e) => Err(Error::new(ErrorKind::InvalidData, e)),
+        let size = self.read_i32()?;
+        match size {
+            0 | 1 => {
+                self.offset += size as usize;
+                return Ok(String::from(""));
+            }
+            -1 => {
+                self.offset += 2;
+                return Ok(String::from(""));
+            }
+            _ if size < 0 => {
+                let size = size as usize;
+                let mut buf = Vec::with_capacity(size - 1);
+                buf.extend_from_slice(&self.data[self.offset..self.offset + size - 1]);
+                self.offset += size;
+                match String::from_utf8(buf) {
+                    Ok(string) => Ok(string),
+                    Err(e) => Err(Error::new(ErrorKind::InvalidData, e)),
+                }
+            }
+            _ => {
+                let size = (size * -2) as usize;
+                let mut buf = Vec::with_capacity(size - 1);
+                buf.extend_from_slice(&self.data[self.offset..self.offset + size - 1]);
+                let data: &[u16] =
+                    unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u16, buf.len()) };
+                self.offset += size;
+                match String::from_utf16(data) {
+                    Ok(string) => Ok(string),
+                    Err(e) => Err(Error::new(ErrorKind::InvalidData, e)),
+                }
+            }
         }
     }
 
@@ -117,5 +142,16 @@ impl<'a> Reader for ArrayReader<'a> {
         let val = self.data[self.offset];
         self.offset += 1;
         Ok(val)
+    }
+
+    fn skip_str(&mut self) -> Result<()> {
+        let size = self.read_i32()?;
+        self.offset += if size < 0 {
+            (size * -2) as usize
+        } else {
+            size as usize
+        };
+
+        Ok(())
     }
 }
